@@ -2,17 +2,19 @@ import cv2, os
 import numpy as np
 
 ROOT_DIR = os.getcwd()
-TEST_DIR = os.path.join(ROOT_DIR, 'tests')
-image_list = [i for i in os.listdir(TEST_DIR) if i.endswith('.png')]
-image_list.sort(key=lambda a:int(a.split('_')[2]))
+DATA_DIR = os.path.join(ROOT_DIR, 'data')
+OUTPUT_DIR = os.path.join(DATA_DIR, 'output')
+INPUT_DIR = os.path.join(DATA_DIR, 'input')
 
 
-RAW_DIR = '/home/ocakirog/Desktop/ozanc-projects/data-preprocessing/istanbul'
-raw_image_list = [i for i in os.listdir(RAW_DIR) if i.endswith('leftImg8bit.jpg')]
-raw_image_list.sort(key=lambda a:int(a.split('_')[2]))
+input_image_list = [i for i in os.listdir(INPUT_DIR) if i.endswith('leftImg8bit.jpg')]
+input_image_list.sort(key=lambda a:int(a.split('_')[2]))
+
+output_image_list = [i for i in os.listdir(OUTPUT_DIR) if i.endswith('.png')]
+output_image_list.sort(key=lambda a:int(a.split('_')[2]))
 
 
-dummy_image_path = os.path.join(TEST_DIR, image_list[0])
+dummy_image_path = os.path.join(INPUT_DIR, input_image_list[0])
 dummy_image = cv2.imread(dummy_image_path)
 
 width, height, channels = dummy_image.shape
@@ -20,23 +22,21 @@ width, height, channels = dummy_image.shape
 output_dir = 'monodepth_ozan.avi'
 fourcc =  cv2.VideoWriter_fourcc('M','J','P','G')
 fps = 30
-out = cv2.VideoWriter(output_dir, fourcc, fps, (width//4, height//2))
+out = cv2.VideoWriter(output_dir, fourcc, fps, (height//2, width//4))
 
-for ind, image_name in enumerate(image_list):
-    if ind >15:
-        break
-    image_path = os.path.join(TEST_DIR, image_name)
-    frame = cv2.imread(image_path)
-    frame = cv2.resize(frame, (frame.shape[1]//4, frame.shape[0]//4))
+for ind, image_name in enumerate(input_image_list):
+    input_image_path = os.path.join(INPUT_DIR, image_name)
+    input_image = cv2.imread(input_image_path)
+    input_image = cv2.resize(input_image, (input_image.shape[1]//4, input_image.shape[0]//4))
 
-    raw_image_path = os.path.join(RAW_DIR, raw_image_list[ind])
-    raw_image = cv2.imread(raw_image_path)
-    raw_image = cv2.resize(raw_image, (raw_image.shape[1]//4, raw_image.shape[0]//4))
+    output_image_path = os.path.join(OUTPUT_DIR, output_image_list[ind])
+    output_image = cv2.imread(output_image_path)
+    output_image = cv2.resize(output_image, (output_image.shape[1]//4, output_image.shape[0]//4))
 
-    both_images = cv2.vconcat([raw_image, frame])
-    print(both_images.shape)
+    both_images = cv2.hconcat([input_image, output_image])
+
     out.write(both_images)
-
+    print(both_images.shape)
     cv2.imshow('frame',both_images)
     cv2.waitKey(1)
 # When everything done, release the video capture and video write objects
