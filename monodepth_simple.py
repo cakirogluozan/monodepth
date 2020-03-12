@@ -25,15 +25,18 @@ import matplotlib.pyplot as plt
 from monodepth_model import *
 from monodepth_dataloader import *
 from average_gradients import *
+import matplotlib.image as mpimg
+
+import cv2
 
 parser = argparse.ArgumentParser(description='Monodepth TensorFlow implementation.')
 
 parser.add_argument('--encoder',          type=str,   help='type of encoder, vgg or resnet50', default='vgg')
-parser.add_argument('--image_path',       type=str,   help='path to the image', required=True)
+parser.add_argument('--image_dir',       type=str,   help='path to the image', required=True)
 parser.add_argument('--checkpoint_path',  type=str,   help='path to a specific checkpoint to load', required=True)
 parser.add_argument('--input_height',     type=int,   help='input height', default=256)
 parser.add_argument('--input_width',      type=int,   help='input width', default=512)
-
+parser.add_argument('--output_dir',      type=str,   help='output dir', default=None)
 args = parser.parse_args()
 
 def post_process_disparity(disp):
@@ -51,41 +54,49 @@ def test_simple(params):
 
     left  = tf.placeholder(tf.float32, [2, args.input_height, args.input_width, 3])
     model = MonodepthModel(params, "test", left, None)
+    image_list = [img for img in os.listdir(args.image_dir) if img.endswith('leftImg8bit.jpg')]
+    image_list.sort(key=lambda a:int(a.split('_')[2]))
+    for image_name in image_list:
+        image_path = os.path.join(args.image_dir, image_name)
+        input_image = mpimg.imread(image_path)
+        original_height, original_width, num_channels = input_image.shape
+        input_image = cv2.resize(input_image, (args.input_width, args.input_height))
+        input_image = input_image.astype(np.float32) / 255
+        input_images = np.stack((input_image, np.fliplr(input_image)), 0)
 
-    input_image = scipy.misc.imread(args.image_path, mode="RGB")
-    original_height, original_width, num_channels = input_image.shape
-    input_image = scipy.misc.imresize(input_image, [args.input_height, args.input_width], interp='lanczos')
-    input_image = input_image.astype(np.float32) / 255
-    input_images = np.stack((input_image, np.fliplr(input_image)), 0)
+        # SESSION
+        config = tf.ConfigProto(allow_soft_placement=True)
+        sess = tf.Session(config=config)
 
-    # SESSION
-    config = tf.ConfigProto(allow_soft_placement=True)
-    sess = tf.Session(config=config)
+        # SAVER
+        train_saver = tf.train.Saver()
 
-    # SAVER
-    train_saver = tf.train.Saver()
+        # INIT
+        sess.run(tf.global_variables_initializer())
+        sess.run(tf.local_variables_initializer())
+        coordinator = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
 
-    # INIT
-    sess.run(tf.global_variables_initializer())
-    sess.run(tf.local_variables_initializer())
-    coordinator = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
+        # RESTORE
+        restore_path = args.checkpoint_path.split(".")[0]
+        train_saver.restore(sess, restore_path)
 
-    # RESTORE
-    restore_path = args.checkpoint_path.split(".")[0]
-    train_saver.restore(sess, restore_path)
+        disp = sess.run(model.disp_left_est[0], feed_dict={left: input_images})
+        disp_pp = post_process_disparity(disp.squeeze()).astype(np.float32)
+        if args.output_dir == None:
+            output_directory = os.path.dirname(image_path)
+        else:
+            output_directory = args.output_dir
 
-    disp = sess.run(model.disp_left_est[0], feed_dict={left: input_images})
-    disp_pp = post_process_disparity(disp.squeeze()).astype(np.float32)
+        output_name = os.path.splitext(os.path.basename(image_path))[0]
 
-    output_directory = os.path.dirname(args.image_path)
-    output_name = os.path.splitext(os.path.basename(args.image_path))[0]
-
-    np.save(os.path.join(output_directory, "{}_disp.npy".format(output_name)), disp_pp)
-    disp_to_img = scipy.misc.imresize(disp_pp.squeeze(), [original_height, original_width])
-    plt.imsave(os.path.join(output_directory, "{}_disp.png".format(output_name)), disp_to_img, cmap='plasma')
-
-    print('done!')
+        np.save(os.path.join(output_directory, "{}_disp.npy".format(output_name)), disp_pp)
+        disp_to_img = cv2.resize(disp_pp.squeeze(), (original_width, original_height))
+        plt.imsave(os.path.join(output_directory, "{}_disp.png".format(output_name)), disp_to_img, cmap='plasma')
+        print('**'*20)        
+        print(output_name)
+        print('**'*20)
+        print('done!')
 
 def main(_):
 
